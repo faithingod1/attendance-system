@@ -158,6 +158,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadDashboardData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMonth, selectedYear]);
 
   // Handle Logout

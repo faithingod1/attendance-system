@@ -1,15 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+// ─── Lazy singleton for public (anon-key) client ────────────────────────────
+// Called only at runtime from client components, never at build time.
+let _supabaseClient: SupabaseClient | null = null;
 
-// Client-side Supabase instance (uses anon key)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export function getSupabaseClient(): SupabaseClient {
+  if (_supabaseClient) return _supabaseClient;
 
-// Server-side privileged Supabase instance (uses service_role key)
-export function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.'
+    );
+  }
+
+  _supabaseClient = createClient(url, anonKey);
+  return _supabaseClient;
+}
+
+// ─── Server-side privileged client (service_role key) ───────────────────────
+// Only ever called inside API Route Handlers (server-side), never at build time.
+export function getSupabaseAdmin(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -26,3 +39,11 @@ export function getSupabaseAdmin() {
     },
   });
 }
+
+// ─── Legacy named export kept for any future client components ───────────────
+// Use getSupabaseClient() in client components instead of this direct export.
+export const supabase = {
+  get client() {
+    return getSupabaseClient();
+  },
+};

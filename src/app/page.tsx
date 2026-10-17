@@ -9,7 +9,6 @@ import {
   formatDateISO,
   getDayOfWeekIndex,
   isWeekend,
-  getCurrentYearMonthInKL,
 } from '@/lib/date-utils';
 import { AttendanceDay, AttendanceStatus } from '@/lib/types';
 import {
@@ -21,45 +20,59 @@ import {
   AlertCircle,
   Send,
   User,
-  Building,
   RotateCcw,
+  Info,
 } from 'lucide-react';
 
 export default function WorkerAttendancePage() {
   const { lang, t } = useLanguage();
 
+  // ─── Bootstrap state ────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
   const [workers, setWorkers] = useState<Array<{ id: string; worker_name: string; department: string }>>([]);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
 
-  const currentKL = getCurrentYearMonthInKL();
-  const [selectedMonth, setSelectedMonth] = useState<number>(currentKL.month);
-  const [selectedYear, setSelectedYear] = useState<number>(currentKL.year);
+  // ─── Form selection state (all start EMPTY) ─────────────────────────
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>('');
+  const [selectedMonth, setSelectedMonth] = useState<number>(0);   // 0 = not chosen
+  const [selectedYear, setSelectedYear] = useState<number>(0);     // 0 = not chosen
 
+  // ─── Attendance data ─────────────────────────────────────────────────
   const [days, setDays] = useState<AttendanceDay[]>([]);
+  const [hasExistingSubmission, setHasExistingSubmission] = useState(false);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+
+  // ─── UI state ────────────────────────────────────────────────────────
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
-  // 1. Fetch bootstrap data
+  // ── Derived values ────────────────────────────────────────────────────
+  const formReady = selectedWorkerId !== '' && selectedMonth !== 0 && selectedYear !== 0;
+  const selectedWorker = workers.find((w) => w.id === selectedWorkerId);
+  const availableYears = [2026, 2027, 2028];
+
+  // ── 1. Bootstrap: fetch lock status + active workers ─────────────────
   useEffect(() => {
     async function loadBootstrap() {
       setLoading(true);
-      setErrorMsg(null);
+      setBootstrapError(null);
       try {
         const res = await fetch('/api/public/bootstrap');
         const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to load attendance system');
+        }
         if (data.isLocked) {
           setIsLocked(true);
         } else {
           setIsLocked(false);
           setWorkers(data.workers || []);
         }
-      } catch (err) {
-        setErrorMsg('Failed to connect to the attendance service.');
+      } catch (err: any) {
+        setBootstrapError(err.message || 'Failed to connect to the attendance service.');
       } finally {
         setLoading(false);
       }
@@ -67,74 +80,90 @@ export default function WorkerAttendancePage() {
     loadBootstrap();
   }, []);
 
-  // 2. Generate or load days when worker, month, or year changes
+  // ── 2. Generate blank day grid + load existing records when selection is complete ──
   useEffect(() => {
-    if (isLocked) return;
+    // Don't do anything until the form is fully selected
+    if (!formReady) {
+      setDays([]);
+      setHasExistingSubmission(false);
+      return;
+    }
 
     const totalDays = getDaysInMonth(selectedYear, selectedMonth);
-    const initialDays: AttendanceDay[] = [];
 
+    // Build a default blank grid (all Off Day, no times)
+    const blankGrid: AttendanceDay[] = [];
     for (let day = 1; day <= totalDays; day++) {
       const dateStr = formatDateISO(selectedYear, selectedMonth, day);
-      const isWknd = isWeekend(dateStr);
-      initialDays.push({
+      blankGrid.push({
         worker_id: selectedWorkerId,
         attendance_date: dateStr,
         month: selectedMonth,
         year: selectedYear,
-        attendance_status: isWknd ? 'Off Day' : 'Present',
-        time_arrive: isWknd ? null : '09:00',
-        time_leave: isWknd ? null : '18:00',
+        attendance_status: 'Off Day',
+        time_arrive: null,
+        time_leave: null,
         keterangan: '',
       });
     }
 
-    if (!selectedWorkerId) {
-      setDays(initialDays);
-      return;
-    }
-
-    // Try to fetch existing records for this worker & period
+    // Fetch existing records from the server (to pre-fill if already submitted)
     async function fetchExisting() {
       setLoadingAttendance(true);
       setErrorMsg(null);
+      setHasExistingSubmission(false);
       try {
         const res = await fetch(
           `/api/public/attendance?workerId=${selectedWorkerId}&month=${selectedMonth}&year=${selectedYear}`
         );
+
+        if (res.status === 403) {
+          // Link got locked between bootstrap and now
+          setIsLocked(true);
+          setDays([]);
+          return;
+        }
+
         const data = await res.json();
 
         if (res.ok && data.days && data.days.length > 0) {
-          const map = new Map<string, any>();
-          data.days.forEach((d: any) => map.set(d.attendance_date, d));
+          // Map server records onto the full blank grid so every date is represented
+          const serverMap = new Map<string, any>();
+          data.days.forEach((d: any) => serverMap.set(d.attendance_date, d));
 
-          const merged = initialDays.map((initDay) => {
-            const existing = map.get(initDay.attendance_date);
+          const merged = blankGrid.map((blankDay) => {
+            const existing = serverMap.get(blankDay.attendance_date);
             if (existing) {
               return {
-                ...initDay,
-                attendance_status: existing.attendance_status,
+                ...blankDay,
+                attendance_status: existing.attendance_status as AttendanceStatus,
                 time_arrive: existing.time_arrive ? existing.time_arrive.slice(0, 5) : null,
                 time_leave: existing.time_leave ? existing.time_leave.slice(0, 5) : null,
                 keterangan: existing.keterangan || '',
               };
             }
-            return initDay;
+            return blankDay;
           });
+
           setDays(merged);
+          setHasExistingSubmission(data.hasSubmission === true);
         } else {
-          setDays(initialDays);
+          // No previous records — show the blank grid
+          setDays(blankGrid);
         }
       } catch (err) {
-        setDays(initialDays);
+        // Network failure — show blank grid so the worker can still fill in
+        setDays(blankGrid);
       } finally {
         setLoadingAttendance(false);
       }
     }
 
     fetchExisting();
-  }, [selectedWorkerId, selectedMonth, selectedYear, isLocked]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWorkerId, selectedMonth, selectedYear]);
 
+  // ── Helpers ───────────────────────────────────────────────────────────
   const updateDay = (index: number, field: keyof AttendanceDay, value: any) => {
     setDays((prev) => {
       const next = [...prev];
@@ -171,7 +200,7 @@ export default function WorkerAttendancePage() {
         const wknd = isWeekend(d.attendance_date);
         return {
           ...d,
-          attendance_status: wknd ? 'Off Day' : 'Present',
+          attendance_status: (wknd ? 'Off Day' : 'Present') as AttendanceStatus,
           time_arrive: wknd ? null : '09:00',
           time_leave: wknd ? null : '18:00',
         };
@@ -179,7 +208,7 @@ export default function WorkerAttendancePage() {
     );
   };
 
-  const validateAndPrepare = () => {
+  const validateAndOpenConfirm = () => {
     if (!selectedWorkerId) {
       setErrorMsg(t('workerRequired'));
       return;
@@ -229,19 +258,21 @@ export default function WorkerAttendancePage() {
     }
   };
 
-  const selectedWorker = workers.find((w) => w.id === selectedWorkerId);
-
-  // Summary counts
+  // ── Summary counts ────────────────────────────────────────────────────
   const presentCount = days.filter((d) => d.attendance_status === 'Present').length;
   const offCount = days.filter((d) => d.attendance_status === 'Off Day').length;
   const leaveCount = days.length - presentCount - offCount;
 
+  // ═══════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════
   return (
     <>
       <Navbar />
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 py-6 sm:py-8">
-        {/* Loading State */}
+
+        {/* ── Loading ── */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-24 text-muted">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mb-4" />
@@ -249,8 +280,22 @@ export default function WorkerAttendancePage() {
           </div>
         )}
 
-        {/* Link Locked Notice */}
-        {!loading && isLocked && (
+        {/* ── Bootstrap Error ── */}
+        {!loading && bootstrapError && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-8 text-center max-w-md mx-auto my-12">
+            <AlertCircle className="w-10 h-10 text-danger mx-auto mb-4" />
+            <p className="text-sm text-danger font-medium">{bootstrapError}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-4 px-4 py-2 text-xs font-semibold text-white bg-primary hover:bg-primary-hover rounded-xl"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {/* ── Link Locked Notice ── */}
+        {!loading && !bootstrapError && isLocked && (
           <div className="bg-white border border-red-200 rounded-2xl p-8 sm:p-12 text-center shadow-sm max-w-xl mx-auto my-12">
             <div className="w-16 h-16 bg-red-50 text-danger rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm">
               <Lock className="w-8 h-8" />
@@ -264,8 +309,8 @@ export default function WorkerAttendancePage() {
           </div>
         )}
 
-        {/* Success Screen */}
-        {!loading && !isLocked && submittedSuccessfully && (
+        {/* ── Success Screen ── */}
+        {!loading && !bootstrapError && !isLocked && submittedSuccessfully && (
           <div className="bg-white border border-[#c5dbcc] rounded-2xl p-8 sm:p-12 text-center shadow-sm max-w-lg mx-auto my-12">
             <div className="w-16 h-16 bg-soft text-primary rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm">
               <CheckCircle2 className="w-8 h-8" />
@@ -277,22 +322,22 @@ export default function WorkerAttendancePage() {
               {t('submissionSuccessMsg')}
             </p>
 
-            <div className="bg-gray-50 rounded-xl p-4 mb-6 text-xs sm:text-sm text-left border border-gray-100">
-              <div className="flex justify-between py-1">
+            <div className="bg-gray-50 rounded-xl p-4 mb-6 text-xs sm:text-sm text-left border border-gray-100 space-y-1.5">
+              <div className="flex justify-between">
                 <span className="text-muted">{t('employee')}:</span>
                 <span className="font-semibold text-ink">{selectedWorker?.worker_name}</span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between">
                 <span className="text-muted">{t('month')}:</span>
                 <span className="font-semibold text-ink">
                   {MONTH_NAMES[lang][selectedMonth - 1]} {selectedYear}
                 </span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between">
                 <span className="text-muted">{t('daysPresent')}:</span>
                 <span className="font-semibold text-primary">{presentCount}</span>
               </div>
-              <div className="flex justify-between py-1">
+              <div className="flex justify-between">
                 <span className="text-muted">{t('daysOff')}:</span>
                 <span className="font-semibold text-muted">{offCount}</span>
               </div>
@@ -302,6 +347,9 @@ export default function WorkerAttendancePage() {
               onClick={() => {
                 setSubmittedSuccessfully(false);
                 setSelectedWorkerId('');
+                setSelectedMonth(0);
+                setSelectedYear(0);
+                setDays([]);
               }}
               className="inline-flex items-center px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-sm font-semibold transition-colors shadow-sm"
             >
@@ -311,12 +359,14 @@ export default function WorkerAttendancePage() {
           </div>
         )}
 
-        {/* Normal Attendance Form */}
-        {!loading && !isLocked && !submittedSuccessfully && (
+        {/* ── Main Attendance Form ── */}
+        {!loading && !bootstrapError && !isLocked && !submittedSuccessfully && (
           <div className="space-y-6">
-            {/* Top Selection Card */}
+
+            {/* ── Selection Card ── */}
             <div className="bg-white rounded-2xl p-5 sm:p-6 border border-border shadow-sm">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
                 {/* Employee Select */}
                 <div className="sm:col-span-1">
                   <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1.5">
@@ -325,31 +375,41 @@ export default function WorkerAttendancePage() {
                   <div className="relative">
                     <select
                       value={selectedWorkerId}
-                      onChange={(e) => setSelectedWorkerId(e.target.value)}
-                      className="w-full appearance-none bg-gray-50 border border-border rounded-xl px-3.5 py-2.5 text-sm text-ink font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all"
+                      onChange={(e) => {
+                        setSelectedWorkerId(e.target.value);
+                        setErrorMsg(null);
+                      }}
+                      className="w-full appearance-none bg-gray-50 border border-border rounded-xl px-3.5 py-2.5 text-sm text-ink font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all pr-10"
                     >
                       <option value="">{t('selectEmployee')}</option>
                       {workers.map((w) => (
                         <option key={w.id} value={w.id}>
-                          {w.worker_name} ({w.department})
+                          {w.worker_name}
                         </option>
                       ))}
                     </select>
                     <User className="w-4 h-4 text-muted absolute right-3 top-3 pointer-events-none" />
                   </div>
+                  {selectedWorker && (
+                    <p className="text-[11px] text-muted mt-1 pl-1">{selectedWorker.department}</p>
+                  )}
                 </div>
 
                 {/* Month Select */}
                 <div>
                   <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1.5">
-                    {t('month')}
+                    {t('month')} <span className="text-danger">*</span>
                   </label>
                   <div className="relative">
                     <select
                       value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-                      className="w-full appearance-none bg-gray-50 border border-border rounded-xl px-3.5 py-2.5 text-sm text-ink font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all"
+                      onChange={(e) => {
+                        setSelectedMonth(parseInt(e.target.value, 10));
+                        setErrorMsg(null);
+                      }}
+                      className="w-full appearance-none bg-gray-50 border border-border rounded-xl px-3.5 py-2.5 text-sm text-ink font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all pr-10"
                     >
+                      <option value={0}>-- {t('month')} --</option>
                       {MONTH_NAMES[lang].map((name, idx) => (
                         <option key={idx + 1} value={idx + 1}>
                           {name}
@@ -363,14 +423,18 @@ export default function WorkerAttendancePage() {
                 {/* Year Select */}
                 <div>
                   <label className="block text-xs font-semibold text-ink uppercase tracking-wider mb-1.5">
-                    {t('year')}
+                    {t('year')} <span className="text-danger">*</span>
                   </label>
                   <select
                     value={selectedYear}
-                    onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+                    onChange={(e) => {
+                      setSelectedYear(parseInt(e.target.value, 10));
+                      setErrorMsg(null);
+                    }}
                     className="w-full bg-gray-50 border border-border rounded-xl px-3.5 py-2.5 text-sm text-ink font-medium focus:outline-none focus:ring-2 focus:ring-primary focus:bg-white transition-all"
                   >
-                    {[2024, 2025, 2026, 2027].map((yr) => (
+                    <option value={0}>-- {t('year')} --</option>
+                    {availableYears.map((yr) => (
                       <option key={yr} value={yr}>
                         {yr}
                       </option>
@@ -379,34 +443,61 @@ export default function WorkerAttendancePage() {
                 </div>
               </div>
 
-              {/* Quick Fill Toolbar */}
-              <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleMarkWeekdaysPresent}
-                    className="inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg bg-soft text-primary hover:bg-[#d8e9dc] transition-colors"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                    {t('markWeekdaysPresent')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSetStandardHours}
-                    className="inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg bg-gray-100 text-ink hover:bg-gray-200 transition-colors"
-                  >
-                    <Clock className="w-3.5 h-3.5 mr-1.5 text-muted" />
-                    {t('fillStandardHours')}
-                  </button>
-                </div>
+              {/* Quick Fill Toolbar — only shown when form is ready */}
+              {formReady && (
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleMarkWeekdaysPresent}
+                      className="inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg bg-soft text-primary hover:bg-[#d8e9dc] transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      {t('markWeekdaysPresent')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSetStandardHours}
+                      className="inline-flex items-center text-xs font-medium px-3 py-1.5 rounded-lg bg-gray-100 text-ink hover:bg-gray-200 transition-colors"
+                    >
+                      <Clock className="w-3.5 h-3.5 mr-1.5 text-muted" />
+                      {t('fillStandardHours')}
+                    </button>
+                  </div>
 
-                <div className="text-xs text-muted font-medium">
-                  {presentCount} {t('Present')} · {offCount} {t('Off Day')} · {leaveCount} {t('daysLeave')}
+                  <div className="text-xs text-muted font-medium">
+                    {presentCount} {t('Present')} · {offCount} {t('Off Day')}
+                    {leaveCount > 0 && ` · ${leaveCount} ${t('daysLeave')}`}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Error Banner */}
+            {/* ── Prompt when selection is incomplete ── */}
+            {!formReady && (
+              <div className="bg-white rounded-2xl p-8 border border-dashed border-border text-center text-muted">
+                <Info className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+                <p className="text-sm font-medium">
+                  {lang === 'ms'
+                    ? 'Sila pilih nama, bulan, dan tahun anda untuk memaparkan borang kehadiran.'
+                    : 'Please select your name, month, and year above to load the attendance form.'}
+                </p>
+              </div>
+            )}
+
+            {/* ── Existing Submission Notice ── */}
+            {formReady && hasExistingSubmission && !loadingAttendance && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-xl text-xs flex items-start space-x-2">
+                <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  {lang === 'ms'
+                    ? 'Anda telah menghantar kehadiran untuk bulan ini. Rekod lama anda telah dimuatkan. Anda boleh mengemaskini dan hantar semula.'
+                    : 'You have already submitted attendance for this month. Your previous records are pre-loaded below — you can update and resubmit.'}
+                </span>
+              </div>
+            )}
+
+            {/* ── Error Banner ── */}
             {errorMsg && (
               <div className="bg-red-50 border border-red-200 text-danger px-4 py-3 rounded-xl text-sm flex items-start space-x-2">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -414,163 +505,175 @@ export default function WorkerAttendancePage() {
               </div>
             )}
 
-            {/* Attendance Days List / Cards */}
-            <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-border bg-[#fbfdfc] flex items-center justify-between">
-                <h3 className="font-bold text-ink text-sm sm:text-base">
-                  {MONTH_NAMES[lang][selectedMonth - 1]} {selectedYear} ({days.length} {t('totalDays')})
-                </h3>
-                {loadingAttendance && (
-                  <span className="text-xs text-primary font-medium animate-pulse">
-                    Loading records...
-                  </span>
-                )}
-              </div>
+            {/* ── Attendance Days Table ── */}
+            {formReady && (
+              <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-border bg-[#fbfdfc] flex items-center justify-between">
+                  <h3 className="font-bold text-ink text-sm sm:text-base">
+                    {MONTH_NAMES[lang][selectedMonth - 1]} {selectedYear}
+                    {days.length > 0 && <span className="text-muted font-normal ml-2 text-xs">({days.length} {t('totalDays')})</span>}
+                  </h3>
+                  {loadingAttendance && (
+                    <span className="text-xs text-primary font-medium animate-pulse flex items-center">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary mr-1.5" />
+                      Loading records...
+                    </span>
+                  )}
+                </div>
 
-              <div className="divide-y divide-border">
-                {days.map((d, index) => {
-                  const dayIdx = getDayOfWeekIndex(d.attendance_date);
-                  const dayName = DAY_NAMES[lang][dayIdx];
-                  const weekend = isWeekend(d.attendance_date);
-                  const isPresent = d.attendance_status === 'Present';
+                {/* Column headers — desktop only */}
+                <div className="hidden sm:grid grid-cols-[180px_180px_280px_1fr] gap-2 px-6 py-2 bg-gray-50 border-b border-border text-[10px] font-semibold text-muted uppercase tracking-wider">
+                  <span>{t('date')} / {t('day')}</span>
+                  <span>{t('status')}</span>
+                  <span>{t('timeArrive')} — {t('timeLeave')}</span>
+                  <span>{t('remarks')}</span>
+                </div>
 
-                  return (
-                    <div
-                      key={d.attendance_date}
-                      className={`p-4 sm:px-6 transition-colors ${
-                        weekend ? 'bg-gray-50/70' : 'bg-white hover:bg-gray-50/40'
-                      }`}
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                        {/* Date & Day Badge */}
-                        <div className="flex items-center space-x-3 sm:w-44 flex-shrink-0">
-                          <div
-                            className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center font-bold text-xs ${
-                              weekend
-                                ? 'bg-gray-200 text-gray-700'
-                                : 'bg-primary/10 text-primary'
-                            }`}
-                          >
-                            <span>{d.attendance_date.slice(8, 10)}</span>
-                          </div>
-                          <div>
-                            <span className="block text-xs font-semibold text-ink">
-                              {dayName}
-                            </span>
-                            <span className="block text-[11px] text-muted">
-                              {d.attendance_date}
-                            </span>
-                          </div>
-                        </div>
+                <div className="divide-y divide-border">
+                  {days.map((d, index) => {
+                    const dayIdx = getDayOfWeekIndex(d.attendance_date);
+                    const dayName = DAY_NAMES[lang][dayIdx];
+                    const weekend = isWeekend(d.attendance_date);
+                    const isPresent = d.attendance_status === 'Present';
 
-                        {/* Status Select */}
-                        <div className="sm:w-48 flex-shrink-0">
-                          <select
-                            value={d.attendance_status}
-                            onChange={(e) =>
-                              updateDay(index, 'attendance_status', e.target.value as AttendanceStatus)
-                            }
-                            className={`w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-all ${
-                              isPresent
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500'
-                                : d.attendance_status === 'Off Day'
-                                ? 'bg-gray-100 text-gray-700 border-gray-300'
-                                : 'bg-amber-50 text-amber-800 border-amber-300'
-                            }`}
-                          >
-                            <option value="Present">{t('Present')}</option>
-                            <option value="Off Day">{t('Off Day')}</option>
-                            <option value="Sick Leave">{t('Sick Leave')}</option>
-                            <option value="Emergency Leave">{t('Emergency Leave')}</option>
-                            <option value="Public Holiday">{t('Public Holiday')}</option>
-                            <option value="Others">{t('Others')}</option>
-                          </select>
-                        </div>
+                    return (
+                      <div
+                        key={d.attendance_date}
+                        className={`p-4 sm:px-6 transition-colors ${
+                          weekend ? 'bg-gray-50/70' : 'bg-white hover:bg-gray-50/40'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 
-                        {/* Time In & Time Out (if Present) */}
-                        {isPresent ? (
-                          <div className="flex items-center space-x-2 sm:w-64 flex-shrink-0">
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
-                                {t('timeArrive')}
-                              </label>
-                              <input
-                                type="time"
-                                value={d.time_arrive || ''}
-                                onChange={(e) => updateDay(index, 'time_arrive', e.target.value)}
-                                className="w-full text-xs bg-gray-50 border border-border rounded-lg px-2 py-1.5 text-ink font-mono focus:bg-white focus:ring-1 focus:ring-primary"
-                              />
+                          {/* Date & Day */}
+                          <div className="flex items-center space-x-3 sm:w-44 flex-shrink-0">
+                            <div
+                              className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center font-bold text-xs ${
+                                weekend
+                                  ? 'bg-gray-200 text-gray-600'
+                                  : 'bg-primary/10 text-primary'
+                              }`}
+                            >
+                              {d.attendance_date.slice(8, 10)}
                             </div>
-                            <span className="text-muted text-xs mt-3 sm:mt-0">-</span>
-                            <div className="flex-1">
-                              <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
-                                {t('timeLeave')}
-                              </label>
-                              <input
-                                type="time"
-                                value={d.time_leave || ''}
-                                onChange={(e) => updateDay(index, 'time_leave', e.target.value)}
-                                className="w-full text-xs bg-gray-50 border border-border rounded-lg px-2 py-1.5 text-ink font-mono focus:bg-white focus:ring-1 focus:ring-primary"
-                              />
+                            <div>
+                              <span className="block text-xs font-semibold text-ink">{dayName}</span>
+                              <span className="block text-[11px] text-muted">{d.attendance_date}</span>
                             </div>
                           </div>
-                        ) : (
-                          <div className="hidden sm:block sm:w-64 text-center text-xs text-muted italic">
-                            -
-                          </div>
-                        )}
 
-                        {/* Remarks */}
-                        <div className="flex-1 min-w-[140px]">
-                          <input
-                            type="text"
-                            placeholder={t('optionalRemarks')}
-                            value={d.keterangan || ''}
-                            onChange={(e) => updateDay(index, 'keterangan', e.target.value)}
-                            className="w-full text-xs bg-transparent border-b border-dashed border-gray-300 hover:border-gray-400 focus:border-primary focus:outline-none py-1 text-ink placeholder:text-gray-400"
-                          />
+                          {/* Status Select */}
+                          <div className="sm:w-44 flex-shrink-0">
+                            <select
+                              value={d.attendance_status}
+                              onChange={(e) =>
+                                updateDay(index, 'attendance_status', e.target.value as AttendanceStatus)
+                              }
+                              className={`w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-all focus:outline-none focus:ring-1 ${
+                                isPresent
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500'
+                                  : d.attendance_status === 'Off Day'
+                                  ? 'bg-gray-100 text-gray-700 border-gray-300 focus:ring-gray-400'
+                                  : 'bg-amber-50 text-amber-800 border-amber-300 focus:ring-amber-400'
+                              }`}
+                            >
+                              <option value="Present">{t('Present')}</option>
+                              <option value="Off Day">{t('Off Day')}</option>
+                              <option value="Sick Leave">{t('Sick Leave')}</option>
+                              <option value="Emergency Leave">{t('Emergency Leave')}</option>
+                              <option value="Public Holiday">{t('Public Holiday')}</option>
+                              <option value="Others">{t('Others')}</option>
+                            </select>
+                          </div>
+
+                          {/* Time In & Time Out */}
+                          {isPresent ? (
+                            <div className="flex items-center space-x-2 sm:w-64 flex-shrink-0">
+                              <div className="flex-1">
+                                <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
+                                  {t('timeArrive')}
+                                </label>
+                                <input
+                                  type="time"
+                                  value={d.time_arrive || ''}
+                                  onChange={(e) => updateDay(index, 'time_arrive', e.target.value)}
+                                  className="w-full text-xs bg-gray-50 border border-border rounded-lg px-2 py-1.5 text-ink font-mono focus:bg-white focus:ring-1 focus:ring-primary focus:outline-none"
+                                />
+                              </div>
+                              <span className="text-muted text-xs">—</span>
+                              <div className="flex-1">
+                                <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
+                                  {t('timeLeave')}
+                                </label>
+                                <input
+                                  type="time"
+                                  value={d.time_leave || ''}
+                                  onChange={(e) => updateDay(index, 'time_leave', e.target.value)}
+                                  className="w-full text-xs bg-gray-50 border border-border rounded-lg px-2 py-1.5 text-ink font-mono focus:bg-white focus:ring-1 focus:ring-primary focus:outline-none"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="hidden sm:flex sm:w-64 items-center justify-center text-xs text-gray-300 italic">
+                              —
+                            </div>
+                          )}
+
+                          {/* Remarks */}
+                          <div className="flex-1 min-w-[120px]">
+                            <input
+                              type="text"
+                              placeholder={t('optionalRemarks')}
+                              value={d.keterangan || ''}
+                              onChange={(e) => updateDay(index, 'keterangan', e.target.value)}
+                              className="w-full text-xs bg-transparent border-b border-dashed border-gray-300 hover:border-gray-400 focus:border-primary focus:outline-none py-1 text-ink placeholder:text-gray-400"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Bottom Submit Action Bar */}
-            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-border shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-4 z-20">
-              <div className="text-xs sm:text-sm text-ink font-medium">
-                {selectedWorker ? (
-                  <span>
-                    Submitting for: <strong className="text-primary">{selectedWorker.worker_name}</strong>
+            {/* ── Submit Action Bar — only shown when form is ready ── */}
+            {formReady && (
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-border shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-4 z-20">
+                <div className="text-xs sm:text-sm text-ink font-medium">
+                  <span className="text-muted">Submitting: </span>
+                  <strong className="text-primary">{selectedWorker?.worker_name}</strong>
+                  <span className="text-muted ml-2">
+                    {MONTH_NAMES[lang][selectedMonth - 1]} {selectedYear}
                   </span>
-                ) : (
-                  <span className="text-danger">{t('workerRequired')}</span>
-                )}
-              </div>
+                  {hasExistingSubmission && (
+                    <span className="ml-2 text-amber-600 text-[11px]">(update)</span>
+                  )}
+                </div>
 
-              <button
-                type="button"
-                onClick={validateAndPrepare}
-                disabled={submitting}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-sm font-semibold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
-              >
-                <Send className="w-4 h-4 mr-2" />
-                {t('submit')}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={validateAndOpenConfirm}
+                  disabled={submitting || loadingAttendance}
+                  className="w-full sm:w-auto inline-flex items-center justify-center px-6 py-2.5 rounded-xl bg-primary hover:bg-primary-hover text-white text-sm font-semibold transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  {hasExistingSubmission ? 'Update Attendance' : t('submit')}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
 
-      {/* Confirmation Modal */}
+      {/* ── Confirmation Modal ── */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-border animate-in fade-in zoom-in-95">
-            <h3 className="text-lg font-bold text-ink mb-2">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-border">
+            <h3 className="text-lg font-bold text-ink mb-1">
               {t('confirmSubmitTitle')}
             </h3>
-            <p className="text-xs text-muted mb-4">{t('confirmSubmitMsg')}</p>
+            <p className="text-xs text-muted mb-5">{t('confirmSubmitMsg')}</p>
 
             <div className="bg-gray-50 rounded-xl p-4 space-y-2 text-xs border border-gray-100 mb-6">
               <div className="flex justify-between">
@@ -578,12 +681,16 @@ export default function WorkerAttendancePage() {
                 <span className="font-semibold text-ink">{selectedWorker?.worker_name}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-muted">{t('department')}:</span>
+                <span className="font-semibold text-ink">{selectedWorker?.department}</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-muted">{t('month')}:</span>
                 <span className="font-semibold text-ink">
                   {MONTH_NAMES[lang][selectedMonth - 1]} {selectedYear}
                 </span>
               </div>
-              <div className="flex justify-between">
+              <div className="pt-1 border-t border-gray-100 flex justify-between">
                 <span className="text-muted">{t('daysPresent')}:</span>
                 <span className="font-semibold text-primary">{presentCount}</span>
               </div>
@@ -591,11 +698,21 @@ export default function WorkerAttendancePage() {
                 <span className="text-muted">{t('daysOff')}:</span>
                 <span className="font-semibold text-muted">{offCount}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">{t('daysLeave')}:</span>
-                <span className="font-semibold text-amber-700">{leaveCount}</span>
-              </div>
+              {leaveCount > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">{t('daysLeave')}:</span>
+                  <span className="font-semibold text-amber-700">{leaveCount}</span>
+                </div>
+              )}
             </div>
+
+            {hasExistingSubmission && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                {lang === 'ms'
+                  ? 'Ini akan menggantikan rekod yang telah anda hantar sebelum ini.'
+                  : 'This will replace your previously submitted records for this month.'}
+              </p>
+            )}
 
             <div className="flex space-x-3 justify-end">
               <button

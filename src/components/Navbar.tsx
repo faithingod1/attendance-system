@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useLanguage } from '@/context/LanguageContext';
-import { CalendarCheck, ShieldCheck, Globe, LogOut } from 'lucide-react';
+import { CalendarCheck, LogOut } from 'lucide-react';
 
 interface NavbarProps {
   isAdmin?: boolean;
@@ -64,8 +64,8 @@ export default function Navbar({ isAdmin = false, onLogout }: NavbarProps) {
               </button>
             </div>
 
-            {/* Admin or Worker Navigation */}
-            {isAdmin ? (
+            {/* Admin Navigation (only shown on admin pages) */}
+            {isAdmin && (
               <div className="flex items-center space-x-2">
                 <Link
                   href="/"
@@ -83,14 +83,6 @@ export default function Navbar({ isAdmin = false, onLogout }: NavbarProps) {
                   </button>
                 )}
               </div>
-            ) : (
-              <Link
-                href="/admin"
-                className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-ink bg-soft hover:bg-[#d8e9dc] rounded-lg transition-colors border border-[#c5dbcc]"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 mr-1 text-primary" />
-                <span className="hidden sm:inline">Admin</span>
-              </Link>
             )}
           </div>
         </div>

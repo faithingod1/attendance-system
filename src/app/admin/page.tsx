@@ -286,7 +286,7 @@ export default function AdminDashboardPage() {
               onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
               className="bg-white border border-border text-ink rounded-xl px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
-              {[2024, 2025, 2026, 2027].map((yr) => (
+              {[2026, 2027, 2028].map((yr) => (
                 <option key={yr} value={yr}>
                   {yr}
                 </option>

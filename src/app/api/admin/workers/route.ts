@@ -3,6 +3,7 @@ import { requireAdminSession } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // GET all workers
 export async function GET() {
@@ -16,7 +17,11 @@ export async function GET() {
       .order('worker_name', { ascending: true });
 
     if (error) throw error;
-    return NextResponse.json(data || []);
+    return NextResponse.json(data || [], {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      },
+    });
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -45,20 +50,29 @@ export async function POST(request: Request) {
       .insert({
         worker_name: worker_name.trim(),
         department: department.trim(),
-        employee_id: employee_id ? employee_id.trim() : null,
+        employee_id: employee_id && employee_id.trim() ? employee_id.trim() : null,
         status: 'active',
       })
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Create worker DB error:', error);
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'An employee with this Employee ID already exists.' },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
 
     await supabase.from('audit_logs').insert({
       action: 'CREATE_WORKER',
       entity_type: 'workers',
       entity_id: data.id,
       actor: session.username,
-      details: { worker_name, department },
+      details: { worker_name: worker_name.trim(), department: department.trim() },
     });
 
     return NextResponse.json(data);
@@ -70,7 +84,7 @@ export async function POST(request: Request) {
   }
 }
 
-// PUT update an existing worker (e.g. status or name/department)
+// PUT update an existing worker
 export async function PUT(request: Request) {
   try {
     const session = await requireAdminSession();
@@ -87,8 +101,10 @@ export async function PUT(request: Request) {
     };
     if (worker_name) updatePayload.worker_name = worker_name.trim();
     if (department) updatePayload.department = department.trim();
-    if (status) updatePayload.status = status;
-    if (employee_id !== undefined) updatePayload.employee_id = employee_id ? employee_id.trim() : null;
+    if (status) updatePayload.status = status.toLowerCase();
+    if (employee_id !== undefined) {
+      updatePayload.employee_id = employee_id && employee_id.trim() ? employee_id.trim() : null;
+    }
 
     const { data, error } = await supabase
       .from('workers')
@@ -97,7 +113,16 @@ export async function PUT(request: Request) {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Update worker DB error:', error);
+      if (error.code === '23505') {
+        return NextResponse.json(
+          { error: 'An employee with this Employee ID already exists.' },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
 
     await supabase.from('audit_logs').insert({
       action: 'UPDATE_WORKER',

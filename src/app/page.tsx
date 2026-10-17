@@ -60,7 +60,7 @@ export default function WorkerAttendancePage() {
       setLoading(true);
       setBootstrapError(null);
       try {
-        const res = await fetch('/api/public/bootstrap');
+        const res = await fetch('/api/public/bootstrap', { cache: 'no-store' });
         const data = await res.json();
         if (!res.ok) {
           throw new Error(data.error || 'Failed to load attendance system');
@@ -114,7 +114,8 @@ export default function WorkerAttendancePage() {
       setHasExistingSubmission(false);
       try {
         const res = await fetch(
-          `/api/public/attendance?workerId=${selectedWorkerId}&month=${selectedMonth}&year=${selectedYear}`
+          `/api/public/attendance?workerId=${selectedWorkerId}&month=${selectedMonth}&year=${selectedYear}`,
+          { cache: 'no-store' }
         );
 
         if (res.status === 403) {

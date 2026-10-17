@@ -468,7 +468,6 @@ export default function WorkerAttendancePage() {
 
                   <div className="text-xs text-muted font-medium">
                     {presentCount} {t('Present')} · {offCount} {t('Off Day')}
-                    {leaveCount > 0 && ` · ${leaveCount} ${t('daysLeave')}`}
                   </div>
                 </div>
               )}
@@ -580,10 +579,6 @@ export default function WorkerAttendancePage() {
                             >
                               <option value="Present">{t('Present')}</option>
                               <option value="Off Day">{t('Off Day')}</option>
-                              <option value="Sick Leave">{t('Sick Leave')}</option>
-                              <option value="Emergency Leave">{t('Emergency Leave')}</option>
-                              <option value="Public Holiday">{t('Public Holiday')}</option>
-                              <option value="Others">{t('Others')}</option>
                             </select>
                           </div>
 
@@ -699,12 +694,6 @@ export default function WorkerAttendancePage() {
                 <span className="text-muted">{t('daysOff')}:</span>
                 <span className="font-semibold text-muted">{offCount}</span>
               </div>
-              {leaveCount > 0 && (
-                <div className="flex justify-between">
-                  <span className="text-muted">{t('daysLeave')}:</span>
-                  <span className="font-semibold text-amber-700">{leaveCount}</span>
-                </div>
-              )}
             </div>
 
             {hasExistingSubmission && (

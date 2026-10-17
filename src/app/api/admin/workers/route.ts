@@ -140,3 +140,50 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: error.message || 'Server error' }, { status: 500 });
   }
 }
+
+// DELETE a worker
+export async function DELETE(request: Request) {
+  try {
+    const session = await requireAdminSession();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Worker ID is required' }, { status: 400 });
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    // 1. Fetch worker name for audit log
+    const { data: worker } = await supabase
+      .from('workers')
+      .select('worker_name')
+      .eq('id', id)
+      .maybeSingle();
+
+    // 2. Cascade delete attendance and submissions
+    await supabase.from('attendance').delete().eq('worker_id', id);
+    await supabase.from('submissions').delete().eq('worker_id', id);
+
+    // 3. Delete worker
+    const { error } = await supabase.from('workers').delete().eq('id', id);
+    if (error) throw error;
+
+    // 4. Log audit entry
+    await supabase.from('audit_logs').insert({
+      action: 'DELETE_WORKER',
+      entity_type: 'workers',
+      entity_id: id,
+      actor: session.username,
+      details: { worker_name: worker?.worker_name || 'Unknown' },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    console.error('Delete worker error:', error);
+    return NextResponse.json({ error: error.message || 'Server error' }, { status: 500 });
+  }
+}

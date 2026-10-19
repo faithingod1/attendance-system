@@ -1,8 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AdminDashboard from '@/components/AdminDashboard';
+import dynamic from 'next/dynamic';
 import AdminLogin from '@/components/AdminLogin';
+
+const AdminDashboard = dynamic(() => import('@/components/AdminDashboard'), {
+  loading: () => <main className="flex-1 flex items-center justify-center text-muted">Loading...</main>,
+});
 
 export default function AdminPage() {
   const [signedIn, setSignedIn] = useState(false);

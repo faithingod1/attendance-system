@@ -501,7 +501,7 @@ export default function WorkerAttendancePage() {
                 <span>
                   {lang === 'ms'
                     ? 'Anda telah menghantar kehadiran untuk bulan ini. Rekod lama anda telah dimuatkan. Anda boleh mengemaskini dan hantar semula.'
-                    : 'You have already submitted attendance for this month. Your previous records are pre-loaded below — you can update and resubmit.'}
+                    : 'Your saved attendance for this month is shown below. Edit any details and submit to update your existing record.'}
                 </span>
               </div>
             )}
@@ -710,7 +710,7 @@ export default function WorkerAttendancePage() {
               <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
                 {lang === 'ms'
                   ? 'Ini akan menggantikan rekod yang telah anda hantar sebelum ini.'
-                  : 'This will replace your previously submitted records for this month.'}
+                  : 'Submitting will save your changes to the existing attendance record for this month.'}
               </p>
             )}
 

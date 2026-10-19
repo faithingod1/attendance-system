@@ -18,6 +18,9 @@ export const translations = {
     department: 'Department',
     status: 'Status',
     actions: 'Actions',
+    viewAttendanceGuide: 'View and correct attendance records for this employee for the selected month.',
+    editEmployeeGuide: 'Edit employee details, department, and active status.',
+    deleteEmployeeGuide: 'Permanently delete this employee and all their attendance history.',
     
     // Statuses
     Present: 'Present',
@@ -79,7 +82,6 @@ export const translations = {
     filterDepartment: 'All Departments',
     filterStatus: 'All Statuses',
     viewDetails: 'View & Edit Records',
-    reopenSubmission: 'Reopen Submission',
     exportExcel: 'Export Excel (.xlsx)',
     exportPdf: 'Print / Export PDF',
 
@@ -92,7 +94,6 @@ export const translations = {
     daysLeave: 'Days On Leave',
     saveChanges: 'Save Changes',
     saving: 'Saving...',
-    deleteConfirm: 'Are you sure you want to reopen/delete this submission?',
 
     // Errors
     missingTimesError: 'Please enter both arrival and departure times for all Present days.',
@@ -118,6 +119,9 @@ export const translations = {
     department: 'Jabatan',
     status: 'Status',
     actions: 'Tindakan',
+    viewAttendanceGuide: 'Lihat dan betulkan kehadiran pekerja untuk bulan yang dipilih.',
+    editEmployeeGuide: 'Kemaskini maklumat pekerja, jabatan dan status aktif.',
+    deleteEmployeeGuide: 'Padam pekerja ini dan semua sejarah kehadirannya secara kekal.',
     
     // Statuses
     Present: 'Hadir',
@@ -179,7 +183,6 @@ export const translations = {
     filterDepartment: 'Semua Jabatan',
     filterStatus: 'Semua Status',
     viewDetails: 'Lihat & Edit Rekod',
-    reopenSubmission: 'Buka Semula Penyerahan',
     exportExcel: 'Eksport Excel (.xlsx)',
     exportPdf: 'Cetak / Eksport PDF',
 
@@ -192,7 +195,6 @@ export const translations = {
     daysLeave: 'Hari Cuti Sakit / Lain',
     saveChanges: 'Simpan Perubahan',
     saving: 'Menyimpan...',
-    deleteConfirm: 'Adakah anda pasti mahu memadam penyerahan ini dan kembalikan ke Belum Hantar?',
 
     // Errors
     missingTimesError: 'Sila masukkan masa masuk dan masa keluar untuk semua hari Hadir.',

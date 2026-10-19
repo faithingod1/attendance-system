@@ -65,6 +65,8 @@ body {
   .employee-table td {
     display: block;
     padding: 8px 0;
+    font-size: 14px;
+    line-height: 1.5;
     text-align: left;
     overflow-wrap: anywhere;
   }
@@ -79,12 +81,20 @@ body {
   .employee-table td[data-label]::before {
     content: attr(data-label);
     flex-shrink: 0;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     color: #586961;
   }
 
   .employee-table td:first-child {
-    font-size: 16px;
+    font-size: 17px;
+  }
+
+  .employee-table td > span {
+    font-size: 13px;
+  }
+
+  .employee-table td:first-child > div > span + span {
+    font-size: 12px;
   }
 }

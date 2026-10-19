@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
+import ActionButton from '@/components/ActionButton';
 import { useLanguage } from '@/context/LanguageContext';
 import { MONTH_NAMES, DAY_NAMES } from '@/lib/translations';
 import { getCurrentYearMonthInKL, getDayOfWeekIndex } from '@/lib/date-utils';
@@ -25,7 +26,6 @@ import {
   RefreshCw,
   Edit,
   Eye,
-  RotateCcw,
   X,
   Save,
   Trash2,
@@ -160,6 +160,43 @@ export default function AdminDashboard() {
   }, [selectedMonth, selectedYear]);
 
   // Handle Logout
+  useEffect(() => {
+    const controller = new AbortController();
+    let pending = false;
+    const refreshOverview = async () => {
+      if (document.visibilityState !== 'visible' || pending) return;
+      pending = true;
+      try {
+        const response = await fetch(`/api/admin/dashboard?month=${selectedMonth}&year=${selectedYear}`, {
+          cache: 'no-store', signal: controller.signal,
+        });
+        if (response.status === 401) {
+          window.location.replace('/admin');
+          return;
+        }
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!controller.signal.aborted) {
+          setStats(data.stats);
+          setOverviews(data.workerOverviews || []);
+        }
+      } catch {
+        // Retain the displayed records and retry at the next interval.
+      } finally {
+        pending = false;
+      }
+    };
+    const interval = window.setInterval(refreshOverview, 30000);
+    window.addEventListener('focus', refreshOverview);
+    document.addEventListener('visibilitychange', refreshOverview);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshOverview);
+      document.removeEventListener('visibilitychange', refreshOverview);
+    };
+  }, [selectedMonth, selectedYear]);
+
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     window.location.replace('/admin');
@@ -396,21 +433,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Reopen submission
-  const handleReopenSubmission = async (workerId: string) => {
-    if (!confirm(t('deleteConfirm'))) return;
-    try {
-      await fetch(
-        `/api/admin/attendance?workerId=${workerId}&month=${selectedMonth}&year=${selectedYear}`,
-        { method: 'DELETE' }
-      );
-      if (detailModalOpen) setDetailModalOpen(false);
-      loadDashboardData();
-    } catch (err) {
-      console.error('Failed to reopen submission:', err);
-    }
-  };
-
   // Filtered list
   const departments = Array.from(new Set(overviews.map((o) => o.worker.department))).filter(Boolean);
 
@@ -440,31 +462,6 @@ export default function AdminDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {/* Month & Year Dropdown */}
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-              className="bg-white border border-border text-ink rounded-xl px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {MONTH_NAMES[lang].map((name, idx) => (
-                <option key={idx + 1} value={idx + 1}>
-                  {name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-              className="bg-white border border-border text-ink rounded-xl px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            >
-              {[2026, 2027, 2028].map((yr) => (
-                <option key={yr} value={yr}>
-                  {yr}
-                </option>
-              ))}
-            </select>
-
             {/* Refresh Button */}
             <button
               onClick={loadDashboardData}
@@ -676,6 +673,35 @@ export default function AdminDashboard() {
 
         {/* ── Employee Record Table & Top Action Bar ── */}
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Attendance period">
+            {/* Month & Year Dropdown */}
+            <select
+              aria-label={t('month')}
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
+              className="bg-white border border-border text-ink rounded-xl px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {MONTH_NAMES[lang].map((name, idx) => (
+                <option key={idx + 1} value={idx + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+
+            <select
+              aria-label={t('year')}
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
+              className="bg-white border border-border text-ink rounded-xl px-3 py-2 text-xs font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              {[2026, 2027, 2028].map((yr) => (
+                <option key={yr} value={yr}>
+                  {yr}
+                </option>
+              ))}
+            </select>
+
+          </div>
           {/* Action Bar at the top of Employee Table */}
           <div className="bg-white rounded-2xl p-4 border border-border shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             {/* Search & Filters */}
@@ -801,39 +827,31 @@ export default function AdminDashboard() {
                           {item.status === 'Pending' ? '-' : item.offDays}
                         </td>
 
-                        {/* Actions (View, Edit, Reopen, Delete) */}
+                        {/* Actions (View, Edit, Delete) */}
                         <td data-label={t('actions')} className="py-3.5 px-5 text-right">
                           <div className="inline-flex items-center space-x-1">
-                            <button
+                            <ActionButton
                               onClick={() => openDetailModal(item)}
-                              title={t('viewDetails')}
+                              guide={t('viewAttendanceGuide')}
                               className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-gray-100 transition-colors"
                             >
                               <Eye className="w-4 h-4" />
-                            </button>
-                            <button
+                            </ActionButton>
+                            <ActionButton
                               onClick={() => openWorkerModal(item.worker)}
-                              title={t('editWorker')}
+                              guide={t('editEmployeeGuide')}
                               className="p-1.5 rounded-lg text-muted hover:text-ink hover:bg-gray-100 transition-colors"
                             >
                               <Edit className="w-4 h-4" />
-                            </button>
-                            {item.submission && (
-                              <button
-                                onClick={() => handleReopenSubmission(item.worker.id)}
-                                title={t('reopenSubmission')}
-                                className="p-1.5 rounded-lg text-amber-600 hover:bg-amber-50 transition-colors"
-                              >
-                                <RotateCcw className="w-4 h-4" />
-                              </button>
-                            )}
-                            <button
+                            </ActionButton>
+
+                            <ActionButton
                               onClick={() => confirmDeleteWorker(item.worker)}
-                              title="Delete Employee"
+                              guide={t('deleteEmployeeGuide')}
                               className="p-1.5 rounded-lg text-danger hover:bg-red-50 transition-colors"
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </ActionButton>
                           </div>
                         </td>
                       </tr>
@@ -1260,14 +1278,7 @@ export default function AdminDashboard() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                {selectedOverview.submission && (
-                  <button
-                    onClick={() => handleReopenSubmission(selectedOverview.worker.id)}
-                    className="px-3.5 py-2 text-xs font-semibold text-danger hover:bg-red-50 rounded-xl transition-colors"
-                  >
-                    {t('reopenSubmission')}
-                  </button>
-                )}
+
                 <button
                   onClick={handleSaveCorrection}
                   disabled={savingAttendance || attendanceDays.length === 0}

@@ -31,23 +31,16 @@ export async function GET(request: Request) {
       );
     }
 
-    // Check existing submission
-    const { data: submission } = await supabase
-      .from('submissions')
-      .select('*')
-      .eq('worker_id', workerId)
-      .eq('month', month)
-      .eq('year', year)
-      .maybeSingle();
-
-    // Fetch existing attendance days
-    const { data: days, error: daysError } = await supabase
-      .from('attendance')
-      .select('*')
-      .eq('worker_id', workerId)
-      .eq('month', month)
-      .eq('year', year)
-      .order('attendance_date', { ascending: true });
+    // Keep the lock check first, then load independent records concurrently.
+    const [submissionResult, daysResult] = await Promise.all([
+      supabase.from('submissions').select('*')
+        .eq('worker_id', workerId).eq('month', month).eq('year', year).maybeSingle(),
+      supabase.from('attendance').select('*')
+        .eq('worker_id', workerId).eq('month', month).eq('year', year)
+        .order('attendance_date', { ascending: true }),
+    ]);
+    const { data: submission } = submissionResult;
+    const { data: days, error: daysError } = daysResult;
 
     if (daysError) {
       console.error('Error fetching attendance days:', daysError);
@@ -128,14 +121,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to record monthly submission' }, { status: 500 });
     }
 
-    // 4. Delete existing attendance days for this worker & month, then insert fresh
-    await supabase
-      .from('attendance')
-      .delete()
-      .eq('worker_id', workerId)
-      .eq('month', month)
-      .eq('year', year);
-
+    // Update saved dates in place; keep existing records if saving fails.
     const rowsToInsert = days.map((d) => ({
       worker_id: workerId,
       attendance_date: d.attendance_date,
@@ -149,7 +135,7 @@ export async function POST(request: Request) {
       updated_at: new Date().toISOString(),
     }));
 
-    const { error: insertError } = await supabase.from('attendance').insert(rowsToInsert);
+    const { error: insertError } = await supabase.from('attendance').upsert(rowsToInsert, { onConflict: 'worker_id,attendance_date' });
 
     if (insertError) {
       console.error('Attendance insert error:', insertError);

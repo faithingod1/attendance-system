@@ -19,39 +19,20 @@ export async function GET(request: Request) {
 
     const supabase = getSupabaseAdmin();
 
-    // 1. Fetch link lock status
-    const { data: settingData } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'link_locked')
-      .single();
-
+    // These read-only queries are independent; overlap their database latency.
+    const [settingResult, workerResult, submissionResult, attendanceResult] = await Promise.all([
+      supabase.from('settings').select('value').eq('key', 'link_locked').single(),
+      supabase.from('workers').select('*').order('worker_name', { ascending: true }),
+      supabase.from('submissions').select('*').eq('month', month).eq('year', year),
+      supabase.from('attendance').select('worker_id, attendance_status').eq('month', month).eq('year', year),
+    ]);
+    const { data: settingData } = settingResult;
+    const { data: workers, error: workerErr } = workerResult;
+    const { data: submissions, error: subErr } = submissionResult;
+    const { data: attendanceList, error: attErr } = attendanceResult;
     const isLinkLocked = settingData?.value === 'true';
-
-    // 2. Fetch all workers
-    const { data: workers, error: workerErr } = await supabase
-      .from('workers')
-      .select('*')
-      .order('worker_name', { ascending: true });
-
     if (workerErr) throw workerErr;
-
-    // 3. Fetch submissions for this month/year
-    const { data: submissions, error: subErr } = await supabase
-      .from('submissions')
-      .select('*')
-      .eq('month', month)
-      .eq('year', year);
-
     if (subErr) throw subErr;
-
-    // 4. Fetch attendance counts grouped by worker for this month
-    const { data: attendanceList, error: attErr } = await supabase
-      .from('attendance')
-      .select('worker_id, attendance_status')
-      .eq('month', month)
-      .eq('year', year);
-
     if (attErr) throw attErr;
 
     // Build lookup maps

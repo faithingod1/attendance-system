@@ -3,7 +3,7 @@ import './globals.css';
 import { LanguageProvider } from '@/context/LanguageContext';
 
 export const metadata: Metadata = {
-  title: 'Employee Attendance Recording System',
+  title: 'Attendance Form',
   description: 'Monthly employee attendance recording and administration system',
 };
 
@@ -14,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen flex flex-col bg-[#f7faf8]">
+      <body className="min-h-dvh flex flex-col bg-[#f7faf8]">
         <LanguageProvider>{children}</LanguageProvider>
       </body>
     </html>

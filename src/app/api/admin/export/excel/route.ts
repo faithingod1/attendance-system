@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const monthName = MONTH_NAMES.en[month - 1];
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Employee Attendance System';
+    workbook.creator = 'Attendance Dashboard';
     workbook.created = new Date();
 
     if (workerId) {

@@ -2,7 +2,8 @@ export type Language = 'en' | 'ms';
 
 export const translations = {
   en: {
-    appName: 'Employee Attendance System',
+    appName: 'Attendance Form',
+    dashboardName: 'Attendance Dashboard',
     workerForm: 'Worker Attendance Form',
     adminDashboard: 'Admin Dashboard',
     adminLogin: 'Admin Sign In',
@@ -12,6 +13,8 @@ export const translations = {
     year: 'Year',
     employee: 'Employee',
     selectEmployee: '-- Select Your Name --',
+    pleaseSelect: 'Please select',
+    statusRequired: 'Please select an attendance status for every day.',
     department: 'Department',
     status: 'Status',
     actions: 'Actions',
@@ -43,7 +46,7 @@ export const translations = {
     submissionSuccessful: 'Attendance Submitted Successfully!',
     submissionSuccessMsg: 'Your monthly attendance records have been safely recorded.',
     submitAnother: 'Submit Another',
-    fillStandardHours: 'Set 09:00 - 18:00 for Present Days',
+    fillStandardHours: 'Set 08:00 - 17:00 for Present Days',
     markWeekdaysPresent: 'Set All Weekdays as Present',
 
     // Locking
@@ -99,7 +102,8 @@ export const translations = {
     unauthorized: 'Session expired. Please sign in again.',
   },
   ms: {
-    appName: 'Sistem Kehadiran Pekerja',
+    appName: 'Attendance Form',
+    dashboardName: 'Attendance Dashboard',
     workerForm: 'Borang Kehadiran Pekerja',
     adminDashboard: 'Papan Pemuka Pentadbir',
     adminLogin: 'Log Masuk Pentadbir',
@@ -109,6 +113,8 @@ export const translations = {
     year: 'Tahun',
     employee: 'Pekerja',
     selectEmployee: '-- Pilih Nama Anda --',
+    pleaseSelect: 'Sila pilih',
+    statusRequired: 'Sila pilih status kehadiran untuk setiap hari.',
     department: 'Jabatan',
     status: 'Status',
     actions: 'Tindakan',
@@ -140,7 +146,7 @@ export const translations = {
     submissionSuccessful: 'Kehadiran Berjaya Dihantar!',
     submissionSuccessMsg: 'Rekod kehadiran bulanan anda telah disimpan dengan selamat.',
     submitAnother: 'Hantar Lagi',
-    fillStandardHours: 'Isi 09:00 - 18:00 untuk Hari Hadir',
+    fillStandardHours: 'Isi 08:00 - 17:00 untuk Hari Hadir',
     markWeekdaysPresent: 'Tetapkan Semua Hari Bekerja sebagai Hadir',
 
     // Locking

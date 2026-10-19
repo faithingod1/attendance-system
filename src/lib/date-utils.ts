@@ -8,6 +8,11 @@ export function formatDateISO(year: number, month: number, day: number): string 
   return `${year}-${m}-${d}`;
 }
 
+export function formatDateDisplay(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 export function getDayOfWeekIndex(dateStr: string): number {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d).getDay();

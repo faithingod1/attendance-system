@@ -7,6 +7,7 @@ import { MONTH_NAMES, DAY_NAMES } from '@/lib/translations';
 import {
   getDaysInMonth,
   formatDateISO,
+  formatDateDisplay,
   getDayOfWeekIndex,
   isWeekend,
 } from '@/lib/date-utils';
@@ -24,6 +25,10 @@ import {
   Info,
 } from 'lucide-react';
 
+type AttendanceFormDay = Omit<AttendanceDay, 'attendance_status'> & {
+  attendance_status: AttendanceStatus | '';
+};
+
 export default function WorkerAttendancePage() {
   const { lang, t } = useLanguage();
 
@@ -39,7 +44,7 @@ export default function WorkerAttendancePage() {
   const [selectedYear, setSelectedYear] = useState<number>(0);     // 0 = not chosen
 
   // ─── Attendance data ─────────────────────────────────────────────────
-  const [days, setDays] = useState<AttendanceDay[]>([]);
+  const [days, setDays] = useState<AttendanceFormDay[]>([]);
   const [hasExistingSubmission, setHasExistingSubmission] = useState(false);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
 
@@ -91,8 +96,8 @@ export default function WorkerAttendancePage() {
 
     const totalDays = getDaysInMonth(selectedYear, selectedMonth);
 
-    // Build a default blank grid (all Off Day, no times)
-    const blankGrid: AttendanceDay[] = [];
+    // New dates require an explicit status selection.
+    const blankGrid: AttendanceFormDay[] = [];
     for (let day = 1; day <= totalDays; day++) {
       const dateStr = formatDateISO(selectedYear, selectedMonth, day);
       blankGrid.push({
@@ -100,7 +105,7 @@ export default function WorkerAttendancePage() {
         attendance_date: dateStr,
         month: selectedMonth,
         year: selectedYear,
-        attendance_status: 'Off Day',
+        attendance_status: '',
         time_arrive: null,
         time_leave: null,
         keterangan: '',
@@ -172,8 +177,8 @@ export default function WorkerAttendancePage() {
 
       if (field === 'attendance_status') {
         if (value === 'Present') {
-          if (!target.time_arrive) target.time_arrive = '09:00';
-          if (!target.time_leave) target.time_leave = '18:00';
+          if (!target.time_arrive) target.time_arrive = '08:00';
+          if (!target.time_leave) target.time_leave = '17:00';
         } else {
           target.time_arrive = null;
           target.time_leave = null;
@@ -189,7 +194,7 @@ export default function WorkerAttendancePage() {
     setDays((prev) =>
       prev.map((d) =>
         d.attendance_status === 'Present'
-          ? { ...d, time_arrive: '09:00', time_leave: '18:00' }
+          ? { ...d, time_arrive: '08:00', time_leave: '17:00' }
           : d
       )
     );
@@ -202,8 +207,8 @@ export default function WorkerAttendancePage() {
         return {
           ...d,
           attendance_status: (wknd ? 'Off Day' : 'Present') as AttendanceStatus,
-          time_arrive: wknd ? null : '09:00',
-          time_leave: wknd ? null : '18:00',
+          time_arrive: wknd ? null : '08:00',
+          time_leave: wknd ? null : '17:00',
         };
       })
     );
@@ -216,9 +221,13 @@ export default function WorkerAttendancePage() {
     }
 
     for (const d of days) {
+      if (!d.attendance_status) {
+        setErrorMsg(`${t('statusRequired')} (${formatDateDisplay(d.attendance_date)})`);
+        return;
+      }
       if (d.attendance_status === 'Present') {
         if (!d.time_arrive || !d.time_leave) {
-          setErrorMsg(`${t('missingTimesError')} (${d.attendance_date})`);
+          setErrorMsg(`${t('missingTimesError')} (${formatDateDisplay(d.attendance_date)})`);
           return;
         }
       }
@@ -522,7 +531,7 @@ export default function WorkerAttendancePage() {
                 </div>
 
                 {/* Column headers — desktop only */}
-                <div className="hidden sm:grid grid-cols-[180px_180px_280px_1fr] gap-2 px-6 py-2 bg-gray-50 border-b border-border text-[10px] font-semibold text-muted uppercase tracking-wider">
+                <div className="hidden lg:grid grid-cols-[156px_150px_240px_minmax(0,1fr)] gap-3 px-6 py-2 bg-gray-50 border-b border-border text-[10px] font-semibold text-muted uppercase tracking-wider">
                   <span>{t('date')} / {t('day')}</span>
                   <span>{t('status')}</span>
                   <span>{t('timeArrive')} — {t('timeLeave')}</span>
@@ -543,12 +552,12 @@ export default function WorkerAttendancePage() {
                           weekend ? 'bg-gray-50/70' : 'bg-white hover:bg-gray-50/40'
                         }`}
                       >
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[156px_150px_240px_minmax(0,1fr)] lg:items-center gap-3">
 
                           {/* Date & Day */}
-                          <div className="flex items-center space-x-3 sm:w-44 flex-shrink-0">
+                          <div className="flex items-center gap-2.5 min-w-0">
                             <div
-                              className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center font-bold text-xs ${
+                              className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center font-bold text-lg tabular-nums ${
                                 weekend
                                   ? 'bg-gray-200 text-gray-600'
                                   : 'bg-primary/10 text-primary'
@@ -556,14 +565,14 @@ export default function WorkerAttendancePage() {
                             >
                               {d.attendance_date.slice(8, 10)}
                             </div>
-                            <div>
-                              <span className="block text-xs font-semibold text-ink">{dayName}</span>
-                              <span className="block text-[11px] text-muted">{d.attendance_date}</span>
+                            <div className="min-w-0">
+                              <span className="block text-sm leading-5 font-semibold text-ink">{dayName}</span>
+                              <span className="block text-xs leading-5 font-medium tabular-nums text-muted whitespace-nowrap">{formatDateDisplay(d.attendance_date)}</span>
                             </div>
                           </div>
 
                           {/* Status Select */}
-                          <div className="sm:w-44 flex-shrink-0">
+                          <div className="min-w-0">
                             <select
                               value={d.attendance_status}
                               onChange={(e) =>
@@ -572,11 +581,12 @@ export default function WorkerAttendancePage() {
                               className={`w-full text-xs font-semibold rounded-lg px-2.5 py-1.5 border transition-all focus:outline-none focus:ring-1 ${
                                 isPresent
                                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200 focus:ring-emerald-500'
-                                  : d.attendance_status === 'Off Day'
+                                  : !d.attendance_status || d.attendance_status === 'Off Day'
                                   ? 'bg-gray-100 text-gray-700 border-gray-300 focus:ring-gray-400'
                                   : 'bg-amber-50 text-amber-800 border-amber-300 focus:ring-amber-400'
                               }`}
                             >
+                              <option value="" disabled>{t('pleaseSelect')}</option>
                               <option value="Present">{t('Present')}</option>
                               <option value="Off Day">{t('Off Day')}</option>
                             </select>
@@ -584,9 +594,9 @@ export default function WorkerAttendancePage() {
 
                           {/* Time In & Time Out */}
                           {isPresent ? (
-                            <div className="flex items-center space-x-2 sm:w-64 flex-shrink-0">
-                              <div className="flex-1">
-                                <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
+                            <div className="flex items-center space-x-2 min-w-0">
+                              <div className="flex-1 min-w-0">
+                                <label className="block text-[10px] text-muted font-medium mb-0.5 lg:hidden">
                                   {t('timeArrive')}
                                 </label>
                                 <input
@@ -597,8 +607,8 @@ export default function WorkerAttendancePage() {
                                 />
                               </div>
                               <span className="text-muted text-xs">—</span>
-                              <div className="flex-1">
-                                <label className="block text-[10px] text-muted font-medium mb-0.5 sm:hidden">
+                              <div className="flex-1 min-w-0">
+                                <label className="block text-[10px] text-muted font-medium mb-0.5 lg:hidden">
                                   {t('timeLeave')}
                                 </label>
                                 <input
@@ -610,13 +620,13 @@ export default function WorkerAttendancePage() {
                               </div>
                             </div>
                           ) : (
-                            <div className="hidden sm:flex sm:w-64 items-center justify-center text-xs text-gray-300 italic">
+                            <div className="hidden lg:flex min-w-0 items-center justify-center text-xs text-gray-300 italic">
                               —
                             </div>
                           )}
 
                           {/* Remarks */}
-                          <div className="flex-1 min-w-[120px]">
+                          <div className="min-w-0">
                             <input
                               type="text"
                               placeholder={t('optionalRemarks')}
@@ -635,7 +645,7 @@ export default function WorkerAttendancePage() {
 
             {/* ── Submit Action Bar — only shown when form is ready ── */}
             {formReady && (
-              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-border shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-4 z-20">
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-border shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 static sm:sticky sm:bottom-4 z-20">
                 <div className="text-xs sm:text-sm text-ink font-medium">
                   <span className="text-muted">Submitting: </span>
                   <strong className="text-primary">{selectedWorker?.worker_name}</strong>
@@ -665,7 +675,7 @@ export default function WorkerAttendancePage() {
       {/* ── Confirmation Modal ── */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-border">
+          <div className="bg-white rounded-2xl max-w-md w-full max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-border">
             <h3 className="text-lg font-bold text-ink mb-1">
               {t('confirmSubmitTitle')}
             </h3>

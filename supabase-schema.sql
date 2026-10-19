@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
 INSERT INTO public.settings (key, value, updated_by)
 VALUES 
   ('link_locked', 'false', 'system'),
-  ('system_name', 'Employee Attendance Recording System', 'system')
+  ('system_name', 'Attendance Form', 'system')
 ON CONFLICT (key) DO NOTHING;
 
 -- 3. Monthly Submissions table

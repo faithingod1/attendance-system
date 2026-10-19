@@ -29,3 +29,62 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #94a399;
 }
+
+/* Keep touch controls usable and prevent iOS zooming into small inputs. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    min-width: 0;
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 16px !important;
+  }
+
+  button, a[download] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  button svg, a[download] svg {
+    flex-shrink: 0;
+  }
+
+  /* Present the same employee records as labeled cards on phones. */
+  .employee-table, .employee-table tbody, .employee-table tr {
+    display: block;
+    width: 100%;
+  }
+
+  .employee-table thead {
+    display: none;
+  }
+
+  .employee-table tr {
+    padding: 12px 16px;
+  }
+
+  .employee-table td {
+    display: block;
+    padding: 8px 0;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .employee-table td[data-label] {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .employee-table td[data-label]::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: #586961;
+  }
+
+  .employee-table td:first-child {
+    font-size: 16px;
+  }
+}
